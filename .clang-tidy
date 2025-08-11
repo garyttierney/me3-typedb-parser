@@ -1,0 +1,14 @@
+---
+Checks: >-
+  clang-analyzer-* ,
+  bugprone-* ,
+  modernize-* ,
+  readability-* ,
+  cppcoreguidelines-* ,
+
+FormatStyle: file
+User: cxx-layout-dump
+
+CheckOptions:
+  - key: modernize-loop-convert.MinConfidence
+    value: reasonable

@@ -1,0 +1,4 @@
+Language: Cpp
+Standard: Cpp23
+PointerAlignment: left
+ColumnLimit: 120
