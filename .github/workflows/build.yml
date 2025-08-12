@@ -1,0 +1,81 @@
+name: Build (CMake + LLVM/Clang)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    name: linux x86_64 (static)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      LLVM_VERSION: 18
+      BUILD_TYPE: Release
+      BUILD_DIR: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM/Clang ${LLVM_VERSION} and build tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y wget software-properties-common gnupg
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh ${LLVM_VERSION} all
+          sudo apt-get update
+          sudo apt-get install -y \
+            llvm-${LLVM_VERSION}-dev \
+            clang-${LLVM_VERSION} \
+            libclang-${LLVM_VERSION}-dev \
+            libclang-cpp${LLVM_VERSION}-dev \
+            lld-${LLVM_VERSION} \
+            cmake ninja-build build-essential \
+            zlib1g-dev libxml2-dev
+
+      - name: Configure (CMake)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S . -B ${BUILD_DIR} -G Ninja \
+            -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+            -DCMAKE_C_COMPILER=clang-${LLVM_VERSION} \
+            -DCMAKE_CXX_COMPILER=clang++-${LLVM_VERSION} \
+            -DLLVM_DIR=/usr/lib/llvm-${LLVM_VERSION}/lib/cmake/llvm \
+            -DClang_DIR=/usr/lib/llvm-${LLVM_VERSION}/lib/cmake/clang \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld -static-libstdc++ -static-libgcc"
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build ${BUILD_DIR} --config ${BUILD_TYPE} -- -v
+
+      - name: Strip binary
+        shell: bash
+        run: |
+          set -euxo pipefail
+          strip ${BUILD_DIR}/me3-typedb-parser || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: me3-typedb-parser-linux-static
+          path: |
+            build/me3-typedb-parser
+          if-no-files-found: error
+
+      - name: Upload portable bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: me3-typedb-parser-linux-bundle
+          path: |
+            me3-typedb-parser-linux-bundle.tgz
+          if-no-files-found: error
