@@ -24,22 +24,16 @@ struct PointerType {
   std::string pointee;
 };
 
-struct FixedSizeArray {
+struct FixedSizeArrayType {
   uint64_t size;
   std::string elem;
 };
 
-struct UnsizedArray {
+struct UnsizedArrayType {
   std::string elem;
 };
 
 struct FunctionType {
-  std::string return_type;
-  std::vector<std::string> params;
-  bool variadic = false;
-};
-
-struct FunctionPointerType {
   std::string return_type;
   std::vector<std::string> params;
   bool variadic = false;
@@ -64,7 +58,7 @@ struct ObjectType {
 struct EnumType {
   uint64_t size_bytes = 0;
   uint64_t align_bytes = 0;
-  uint32_t integer_width_bits = 0; // TODO: type id to existing scalar type
+  std::string underlying_type;
   std::vector<std::pair<std::string, std::string>> enumerators;
 };
 
@@ -93,9 +87,9 @@ struct ObjectField {
 
 using NodeVariant =
     std::variant<BuiltinType, TemplateParameterType, PointerType,
-                 FixedSizeArray, UnsizedArray, FunctionType,
-                 FunctionPointerType, TemplateSpecializationType, ObjectType,
-                 EnumType, VfTableType, UnknownType>;
+                 FixedSizeArrayType, UnsizedArrayType, FunctionType,
+                 TemplateSpecializationType, ObjectType, EnumType, VfTableType,
+                 UnknownType>;
 
 struct Node {
   std::string name;

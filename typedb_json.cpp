@@ -71,14 +71,14 @@ struct NodeJsonVisitor {
     result["pointee"] = value.pointee;
     return result;
   }
-  auto operator()(const FixedSizeArray &value) const -> llvm::json::Object {
+  auto operator()(const FixedSizeArrayType &value) const -> llvm::json::Object {
     llvm::json::Object result;
     result["kind"] = "const_array";
     result["size"] = value.size;
     result["elem"] = value.elem;
     return result;
   }
-  auto operator()(const UnsizedArray &value) const -> llvm::json::Object {
+  auto operator()(const UnsizedArrayType &value) const -> llvm::json::Object {
     llvm::json::Object result;
     result["kind"] = "incomplete_array";
     result["elem"] = value.elem;
@@ -87,11 +87,6 @@ struct NodeJsonVisitor {
   auto operator()(const FunctionType &value) const -> llvm::json::Object {
     return make_function_like("function", value.return_type, value.params,
                               value.variadic);
-  }
-  auto operator()(const FunctionPointerType &value) const
-      -> llvm::json::Object {
-    return make_function_like("function_pointer", value.return_type,
-                              value.params, value.variadic);
   }
   auto operator()(const TemplateSpecializationType &value) const
       -> llvm::json::Object {
@@ -103,6 +98,7 @@ struct NodeJsonVisitor {
   }
   auto operator()(const ObjectType &value) const -> llvm::json::Object {
     llvm::json::Object object;
+    object["kind"] = "object";
     if (value.template_primary) {
       object["template_primary"] = true;
     }
@@ -137,7 +133,7 @@ struct NodeJsonVisitor {
     result["kind"] = "enum";
     result["size_bytes"] = value.size_bytes;
     result["align_bytes"] = value.align_bytes;
-    result["integer_width_bits"] = value.integer_width_bits;
+    result["underlying_type"] = value.underlying_type;
     if (!value.enumerators.empty()) {
       llvm::json::Array enumerator_array;
       enumerator_array.reserve(value.enumerators.size());
@@ -158,12 +154,18 @@ struct NodeJsonVisitor {
     result["original_record"] = value.original_record;
     result["size_bytes"] = value.size_bytes;
     result["align_bytes"] = value.align_bytes;
-    llvm::json::Array rows;
-    rows.reserve(value.fields.size());
+    llvm::json::Array entries;
+    entries.reserve(value.fields.size());
     for (auto const &field : value.fields) {
-      rows.push_back(field_json(field));
+      llvm::json::Object entry;
+      entry["name"] = field.name;
+      entry["type"] = field.type_id; // already a pointer to function type
+      if (field.layout_known && field.size_bytes != 0) {
+        entry["size_bytes"] = field.size_bytes;
+      }
+      entries.push_back(std::move(entry));
     }
-    result["fields"] = std::move(rows);
+    result["entries"] = std::move(entries);
     return result;
   }
   auto operator()(const UnknownType &value) const -> llvm::json::Object {
@@ -180,15 +182,15 @@ static auto node_payload(const Node &node) -> llvm::json::Object {
   return payload;
 }
 
-auto typedb_to_json(const TypeDb &db) -> llvm::json::Value {
+auto typedb_to_json(const TypeDb &type_db) -> llvm::json::Value {
   llvm::json::Object root;
   root["schema_version"] = SCHEMA_VERSION;
-  root["triple"] = db.triple;
-  root["pointer_width_bits"] = db.pointer_width_bits;
-  root["char_width_bits"] = db.char_width_bits;
-  root["long_width_bits"] = db.long_width_bits;
+  root["triple"] = type_db.triple;
+  root["pointer_width_bits"] = type_db.pointer_width_bits;
+  root["char_width_bits"] = type_db.char_width_bits;
+  root["long_width_bits"] = type_db.long_width_bits;
   llvm::json::Object nodes_obj;
-  for (auto const &node : db.nodes) {
+  for (auto const &node : type_db.nodes) {
     llvm::json::Object payload = node_payload(node);
     if (!node.cdecl.empty()) {
       payload["cdecl"] = node.cdecl;
@@ -196,7 +198,7 @@ auto typedb_to_json(const TypeDb &db) -> llvm::json::Value {
     nodes_obj[node.name] = std::move(payload);
   }
   root["nodes"] = std::move(nodes_obj);
-  return llvm::json::Value(std::move(root));
+  return { std::move(root) };
 }
 
 } // namespace me3::typedb

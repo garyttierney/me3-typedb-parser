@@ -4,6 +4,6 @@
 
 namespace me3::typedb {
 
-auto typedb_to_json(const TypeDb &db) -> llvm::json::Value;
+auto typedb_to_json(const TypeDb &type_db) -> llvm::json::Value;
 
 }

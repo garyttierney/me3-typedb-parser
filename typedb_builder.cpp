@@ -102,20 +102,6 @@ struct TypeInterner {
     }
     if (const auto *ptr_ty = canon->getAs<clang::PointerType>()) {
       clang::QualType pointee_qt = ptr_ty->getPointeeType();
-      if (const auto *func_proto =
-              pointee_qt->getAs<clang::FunctionProtoType>()) {
-        FunctionPointerType fn_ptr_type;
-        fn_ptr_type.return_type =
-            get_type_id(func_proto->getReturnType(), depth + 1);
-        for (clang::QualType param_qt : func_proto->getParamTypes()) {
-          fn_ptr_type.params.push_back(get_type_id(param_qt, depth + 1));
-        }
-        fn_ptr_type.variadic = func_proto->isVariadic();
-        Node node;
-        node.data = std::move(fn_ptr_type);
-        node.cdecl = printed;
-        return intern(std::move(node), printed);
-      }
       Node node;
       node.data = PointerType{get_type_id(pointee_qt, depth + 1)};
       node.cdecl = printed;
@@ -133,7 +119,7 @@ struct TypeInterner {
     }
     if (const auto *const_array_ty = context->getAsConstantArrayType(canon)) {
       Node node;
-      node.data = FixedSizeArray{
+      node.data = FixedSizeArrayType{
           .size = const_array_ty->getSize().getZExtValue(),
           .elem = get_type_id(const_array_ty->getElementType(), depth + 1)};
       node.cdecl = printed;
@@ -142,7 +128,7 @@ struct TypeInterner {
     if (const auto *incomplete_array_ty =
             context->getAsIncompleteArrayType(canon)) {
       Node node;
-      node.data = UnsizedArray{
+      node.data = UnsizedArrayType{
           get_type_id(incomplete_array_ty->getElementType(), depth + 1)};
       node.cdecl = printed;
       return intern(std::move(node), printed);
@@ -218,39 +204,6 @@ auto init_db_from_target(const clang::ASTContext &ctx) -> TypeDb {
   type_db.char_width_bits = static_cast<int>(target_info.getCharWidth());
   type_db.long_width_bits = static_cast<int>(target_info.getLongWidth());
   return type_db;
-}
-
-void emit_enums(clang::ASTContext &ctx,
-                const std::vector<const clang::EnumDecl *> &enums,
-                TypeDb &type_db) {
-  for (const clang::EnumDecl *enum_decl : enums) {
-    if (enum_decl == nullptr || !enum_decl->isCompleteDefinition()) {
-      continue;
-    }
-    std::string name = enum_decl->getQualifiedNameAsString();
-    if (type_db.node_index.contains(name)) {
-      continue;
-    }
-    Node node;
-    node.name = name;
-    EnumType enum_data;
-    clang::QualType eqt(enum_decl->getTypeForDecl(), 0);
-    enum_data.size_bytes = ctx.getTypeSize(eqt) / kBitsPerByte;
-    enum_data.align_bytes = ctx.getTypeAlign(eqt) / kBitsPerByte;
-    if (const clang::Type *under_t =
-            enum_decl->getIntegerType().getTypePtrOrNull()) {
-      enum_data.integer_width_bits = ctx.getTypeSize(under_t);
-    }
-    for (const clang::EnumConstantDecl *enumerator : enum_decl->enumerators()) {
-      llvm::APSInt val = enumerator->getInitVal();
-      llvm::SmallString<kSmallStringBuffer> dec_str;
-      val.toString(dec_str, kDecimalBase);
-      enum_data.enumerators.emplace_back(enumerator->getNameAsString(),
-                                         dec_str.str().str());
-    }
-    node.data = std::move(enum_data);
-    type_db.nodes.push_back(std::move(node));
-  }
 }
 
 void emit_roots_and_templates(
@@ -576,7 +529,8 @@ public:
     enum_data.align_bytes = ctx_->getTypeAlign(eqt) / kBitsPerByte;
     if (const clang::Type *under_t =
             decl->getIntegerType().getTypePtrOrNull()) {
-      enum_data.integer_width_bits = ctx_->getTypeSize(under_t);
+      clang::QualType ut_qt(under_t, 0);
+      enum_data.underlying_type = interner_.get_type_id(ut_qt);
     }
     for (const clang::EnumConstantDecl *enumerator : decl->enumerators()) {
       llvm::APSInt val = enumerator->getInitVal();
