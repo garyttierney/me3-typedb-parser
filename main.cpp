@@ -41,23 +41,24 @@ public:
 };
 } // namespace me3::typedb
 
+static llvm::cl::OptionCategory CLI_CATEGORY("dump-layouts options");
+
+static llvm::cl::list<std::string> CLI_EXTRA_ARGS(
+    "extra-arg",
+    llvm::cl::desc("Additional compile argument (can be repeated)"),
+    llvm::cl::ZeroOrMore, llvm::cl::cat(CLI_CATEGORY));
+
 auto main(int argc, const char **argv) -> int {
   namespace cl = llvm::cl;
-
-  cl::OptionCategory options_cateogry("dump-layouts options");
-  cl::list<std::string> options_extra_args(
-      "extra-arg", cl::desc("Additional compile argument (can be repeated)"),
-      cl::ZeroOrMore, options_cateogry);
-
-  const cl::opt<std::string> SourcePath(cl::Positional,
+  cl::opt<std::string> const SourcePath(cl::Positional,
                                         cl::desc("<source-file>"), cl::Required,
-                                        options_cateogry);
-  cl::HideUnrelatedOptions(options_cateogry);
+                                        cl::cat(CLI_CATEGORY));
+  cl::HideUnrelatedOptions(CLI_CATEGORY);
   if (cl::ParseCommandLineOptions(argc, argv, "Dump record layouts\n")) {
     std::vector<std::string> CompileArgs = {
         "-std=c++17", "--target=x86_64-pc-windows-msvc", "-O0", "-g"};
-    CompileArgs.insert(CompileArgs.end(), options_extra_args.begin(),
-                       options_extra_args.end());
+    CompileArgs.insert(CompileArgs.end(), CLI_EXTRA_ARGS.begin(),
+                       CLI_EXTRA_ARGS.end());
 
     FixedCompilationDatabase const Compilations(".", CompileArgs);
 
