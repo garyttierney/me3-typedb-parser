@@ -24,6 +24,19 @@ static auto field_json(const ObjectField &field) -> llvm::json::Object {
     field_obj["size_bytes"] = field.size_bytes;
   }
   field_obj["type"] = field.type_id;
+
+  if (!field.attributes.empty()) {
+    llvm::json::Object attrs_obj;
+    for (const auto &[attr_name, attr_value] : field.attributes) {
+      attrs_obj[attr_name] = attr_value;
+    }
+    field_obj["attributes"] = std::move(attrs_obj);
+  }
+
+  if (field.comment) {
+    field_obj["comment"] = *field.comment;
+  }
+
   return field_obj;
 }
 
@@ -139,8 +152,11 @@ struct NodeJsonVisitor {
       enumerator_array.reserve(value.enumerators.size());
       for (auto const &enumerator : value.enumerators) {
         llvm::json::Object enumerator_object;
-        enumerator_object["name"] = enumerator.first;
-        enumerator_object["value"] = enumerator.second;
+        enumerator_object["name"] = enumerator.name;
+        enumerator_object["value"] = enumerator.value;
+        if (enumerator.comment) {
+          enumerator_object["comment"] = *enumerator.comment;
+        }
         enumerator_array.push_back(std::move(enumerator_object));
       }
       result["enumerators"] = std::move(enumerator_array);
@@ -195,10 +211,13 @@ auto typedb_to_json(const TypeDb &type_db) -> llvm::json::Value {
     if (!node.cdecl.empty()) {
       payload["cdecl"] = node.cdecl;
     }
+    if (node.comment) {
+      payload["comment"] = *node.comment;
+    }
     nodes_obj[node.name] = std::move(payload);
   }
   root["nodes"] = std::move(nodes_obj);
-  return { std::move(root) };
+  return {std::move(root)};
 }
 
 } // namespace me3::typedb

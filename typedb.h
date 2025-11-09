@@ -55,11 +55,17 @@ struct ObjectType {
   std::vector<ObjectField> fields;
 };
 
+struct Enumerator {
+  std::string name;
+  std::string value;
+  std::optional<std::string> comment;
+};
+
 struct EnumType {
   uint64_t size_bytes = 0;
   uint64_t align_bytes = 0;
   std::string underlying_type;
-  std::vector<std::pair<std::string, std::string>> enumerators;
+  std::vector<Enumerator> enumerators;
 };
 
 struct VfTableType {
@@ -83,6 +89,8 @@ struct ObjectField {
   bool is_bitfield = false;
   std::string type_id;
   bool layout_known = true;
+  std::vector<std::pair<std::string, std::string>> attributes;
+  std::optional<std::string> comment;
 };
 
 using NodeVariant =
@@ -95,6 +103,7 @@ struct Node {
   std::string name;
   NodeVariant data;
   std::string cdecl;
+  std::optional<std::string> comment;
 };
 
 struct TypeDb {

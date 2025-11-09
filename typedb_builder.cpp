@@ -1,6 +1,7 @@
 #include "typedb_builder.h"
 #include "typedb.h"
 #include <clang/AST/ASTContext.h>
+#include <clang/AST/Attr.h>
 #include <clang/AST/Decl.h>
 #include <clang/AST/DeclCXX.h>
 #include <clang/AST/DeclTemplate.h>
@@ -365,6 +366,49 @@ void build_bases_fields(
   }
 }
 
+auto parse_attribute_annotation(llvm::StringRef annotation)
+    -> std::pair<std::string, std::string> {
+  size_t colon_pos = annotation.find(':');
+  if (colon_pos != llvm::StringRef::npos) {
+    return {annotation.substr(0, colon_pos).str(),
+            annotation.substr(colon_pos + 1).str()};
+  }
+  return {annotation.str(), ""};
+}
+
+auto extract_doc_comment(clang::ASTContext &ctx, const clang::Decl *decl)
+    -> std::optional<std::string> {
+  if (decl == nullptr) {
+    return std::nullopt;
+  }
+
+  const clang::RawComment *raw_comment = ctx.getRawCommentForDeclNoCache(decl);
+  if (raw_comment == nullptr) {
+    return std::nullopt;
+  }
+
+  llvm::StringRef brief = raw_comment->getBriefText(ctx);
+  if (!brief.empty()) {
+    return brief.str();
+  }
+
+  std::string formatted = raw_comment->getFormattedText(ctx.getSourceManager(),
+                                                        ctx.getDiagnostics());
+  return formatted.empty() ? std::nullopt : std::optional(formatted);
+}
+
+void extract_field_attributes(
+    const clang::FieldDecl *field_decl,
+    std::vector<std::pair<std::string, std::string>> &attributes) {
+  for (const clang::Attr *attr : field_decl->attrs()) {
+    if (const auto *annotate = llvm::dyn_cast<clang::AnnotateAttr>(attr)) {
+      auto [name, value] =
+          parse_attribute_annotation(annotate->getAnnotation());
+      attributes.emplace_back(std::move(name), std::move(value));
+    }
+  }
+}
+
 void build_member_fields(clang::ASTContext &ctx,
                          const clang::CXXRecordDecl *record_decl,
                          const clang::ASTRecordLayout *layout,
@@ -373,19 +417,25 @@ void build_member_fields(clang::ASTContext &ctx,
   for (const clang::FieldDecl *field_decl : record_decl->fields()) {
     ObjectField member_field;
     member_field.name = field_decl->getNameAsString();
+    member_field.type_id = interner.get_type_id(field_decl->getType());
+
     bool is_dependent =
         field_decl->getType()->isDependentType() || (layout == nullptr);
+
     if (field_decl->isBitField()) {
       member_field.is_bitfield = true;
       member_field.bit_width = field_decl->getBitWidthValue();
     }
-    if (!is_dependent) {
+
+    if (is_dependent) {
+      member_field.layout_known = false;
+    } else {
       member_field.size_bytes =
           ctx.getTypeSize(field_decl->getType()) / kBitsPerByte;
-    } else {
-      member_field.layout_known = false;
     }
-    member_field.type_id = interner.get_type_id(field_decl->getType());
+
+    extract_field_attributes(field_decl, member_field.attributes);
+    member_field.comment = extract_doc_comment(ctx, field_decl);
     fields.push_back(std::move(member_field));
   }
 }
@@ -504,6 +554,7 @@ auto build_record_node(
   build_member_fields(ctx, record_decl, layout, interner, fields);
   obj.fields = std::move(fields);
   rec_node.data = std::move(obj);
+  rec_node.comment = extract_doc_comment(ctx, record_decl);
   return rec_node;
 }
 
@@ -536,10 +587,16 @@ public:
       llvm::APSInt val = enumerator->getInitVal();
       llvm::SmallString<kSmallStringBuffer> buffer;
       val.toString(buffer, kDecimalBase);
-      enum_data.enumerators.emplace_back(enumerator->getNameAsString(),
-                                         buffer.str().str());
+
+      Enumerator enum_const;
+      enum_const.name = enumerator->getNameAsString();
+      enum_const.value = buffer.str().str();
+      enum_const.comment = extract_doc_comment(*ctx_, enumerator);
+
+      enum_data.enumerators.push_back(std::move(enum_const));
     }
     node.data = std::move(enum_data);
+    node.comment = extract_doc_comment(*ctx_, decl);
     db_.nodes.push_back(std::move(node));
     emitted_names_.insert(std::move(name));
     return true;

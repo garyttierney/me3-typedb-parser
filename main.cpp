@@ -56,7 +56,8 @@ auto main(int argc, const char **argv) -> int {
   cl::HideUnrelatedOptions(CLI_CATEGORY);
   if (cl::ParseCommandLineOptions(argc, argv, "Dump record layouts\n")) {
     std::vector<std::string> CompileArgs = {
-        "-std=c++17", "--target=x86_64-pc-windows-msvc", "-O0", "-g"};
+        "-std=c++17", "--target=x86_64-pc-windows-msvc", "-O0", "-g",
+        "-Dformat(spec)=clang::annotate(\"format:\" spec)"};
     CompileArgs.insert(CompileArgs.end(), CLI_EXTRA_ARGS.begin(),
                        CLI_EXTRA_ARGS.end());
 
